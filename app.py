@@ -3,7 +3,12 @@ import pandas as pd
 import numpy as np
 import pickle
 import os
-import joblib
+try:
+    import joblib
+except ImportError:
+    # Fallback if joblib isn't available
+    import pickle as joblib
+    st.warning("Using pickle as fallback since joblib is not available")
 import json
 import warnings
 from sklearn.exceptions import InconsistentVersionWarning
@@ -183,10 +188,20 @@ def load_threshold():
 @st.cache_resource
 def load_model_components():
     try:
-        # Try loading with joblib
-        model = joblib.load('calibrated_model.pkl')
-        scaler = joblib.load('scaler.pkl')
-        imputer = joblib.load('imputer.pkl')
+        # Try loading with joblib first
+        try:
+            model = joblib.load('calibrated_model.pkl')
+            scaler = joblib.load('scaler.pkl')
+            imputer = joblib.load('imputer.pkl')
+        except Exception as e:
+            st.warning(f"Joblib load failed, trying with pickle: {str(e)}")
+            # Fall back to regular pickle if joblib fails
+            with open('calibrated_model.pkl', 'rb') as f:
+                model = pickle.load(f)
+            with open('scaler.pkl', 'rb') as f:
+                scaler = pickle.load(f)
+            with open('imputer.pkl', 'rb') as f:
+                imputer = pickle.load(f)
         
         # Load features and threshold
         features = load_features()
