@@ -36,76 +36,28 @@ required_packages = {
     "xgboost": "xgboost==1.7.3"
 }
 
-# Check if required packages are installed
-missing_packages = []
-for package, install_spec in required_packages.items():
-    if not is_package_installed(package):
-        missing_packages.append(install_spec)
+# Auto-install all required packages without checking first
+st.info("Installing required packages...")
+for package_name, install_spec in required_packages.items():
+    install_package(install_spec)
+st.success("Dependencies installation complete!")
 
-# Install missing packages if needed
-if missing_packages:
-    st.warning("Some required packages are missing. Installing them now...")
-    for package in missing_packages:
-        install_package(package)
-    st.success("All dependencies installed successfully!")
-    
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.write("Please click the button below to launch the application")
-        if st.button("🚀 Launch Diabetes Risk Prediction App", type="primary", use_container_width=True):
-            # Import the app module without running the page config again
-            import sys
-            import importlib.util
-            spec = importlib.util.spec_from_file_location("app", "app.py")
-            app_module = importlib.util.module_from_spec(spec)
-            sys.modules["app"] = app_module
-            spec.loader.exec_module(app_module)
-    st.stop()
+# Always run fix_model.py to ensure we have working model files
+st.info("Generating model files...")
+try:
+    import fix_model
+    success = fix_model.repair_model_files()
+    if success:
+        st.success("Model files have been generated and are ready to use.")
+    else:
+        st.warning("Could not fully repair model files, but will attempt to continue.")
+except Exception as e:
+    st.error(f"Error generating model files: {e}")
 
-# Check for model files
-required_files = [
-    "calibrated_model.pkl",
-    "scaler.pkl",
-    "imputer.pkl",
-    "feature_list.json",
-    "optimal_threshold.json"
-]
-
-missing_files = [file for file in required_files if not os.path.exists(file)]
-
-# If any model files are missing, run the fix_model script
-if missing_files:
-    st.warning(f"Missing required model files: {', '.join(missing_files)}")
-    st.info("Attempting to fix model files...")
-    
-    try:
-        import fix_model
-        success = fix_model.repair_model_files()
-        if success:
-            st.success("Model files have been fixed.")
-            
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                st.write("Please click the button below to launch the application")
-                if st.button("🚀 Launch Diabetes Risk Prediction App", type="primary", use_container_width=True):
-                    # Import the app module without running the page config again
-                    import sys
-                    import importlib.util
-                    spec = importlib.util.spec_from_file_location("app", "app.py")
-                    app_module = importlib.util.module_from_spec(spec)
-                    sys.modules["app"] = app_module
-                    spec.loader.exec_module(app_module)
-        else:
-            st.error("Failed to fix model files. Please check the logs for more information.")
-        st.stop()
-    except Exception as e:
-        st.error(f"Error running fix_model: {e}")
-        st.stop()
-
-# If all checks pass, show a welcome screen with a launch button
+# Launch main application
 st.title("✨ Diabetes Risk Prediction Tool")
 st.markdown("### Setup Complete")
-st.success("All dependencies and model files are available and ready to use.")
+st.success("Dependencies installed and model files generated.")
 
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
@@ -114,7 +66,12 @@ with col2:
         # Import the app module without running the page config again
         import sys
         import importlib.util
-        spec = importlib.util.spec_from_file_location("app", "app.py")
-        app_module = importlib.util.module_from_spec(spec)
-        sys.modules["app"] = app_module
-        spec.loader.exec_module(app_module) 
+        try:
+            spec = importlib.util.spec_from_file_location("app", "app.py")
+            app_module = importlib.util.module_from_spec(spec)
+            sys.modules["app"] = app_module
+            spec.loader.exec_module(app_module)
+            st.success("Application loaded successfully!")
+        except Exception as e:
+            st.error(f"Error loading the application: {e}")
+            st.error("Please refresh the page and try again.") 

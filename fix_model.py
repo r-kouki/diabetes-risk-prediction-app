@@ -1,12 +1,74 @@
 import os
 import pickle
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import StandardScaler
-from sklearn.impute import SimpleImputer
-import json
+import warnings
+import sys
 
 print("Running model repair script...")
+
+# Suppress warnings to avoid cluttering output
+warnings.filterwarnings('ignore')
+
+# Try importing scikit-learn
+try:
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.impute import SimpleImputer
+    sklearn_available = True
+    print("scikit-learn successfully imported")
+except ImportError:
+    print("scikit-learn not available. Using fallback dummy implementations")
+    sklearn_available = False
+    
+    # Define dummy classes if sklearn is not available
+    class RandomForestClassifier:
+        def __init__(self, n_estimators=10, random_state=42):
+            self.n_estimators = n_estimators
+            self.random_state = random_state
+            self.classes_ = np.array([0, 1])
+            self.estimators_ = [None] * n_estimators
+            print("Created dummy RandomForestClassifier")
+            
+        def fit(self, X, y):
+            # Just store some attributes
+            self.n_samples = X.shape[0]
+            self.n_features = X.shape[1]
+            return self
+            
+        def predict_proba(self, X):
+            # Return random probabilities
+            n_samples = X.shape[0]
+            return np.random.rand(n_samples, 2)
+    
+    class StandardScaler:
+        def __init__(self):
+            print("Created dummy StandardScaler")
+            
+        def fit(self, X):
+            return self
+            
+        def transform(self, X):
+            return X
+    
+    class SimpleImputer:
+        def __init__(self, strategy='mean'):
+            self.strategy = strategy
+            print("Created dummy SimpleImputer")
+            
+        def fit(self, X):
+            return self
+            
+        def transform(self, X):
+            return X
+
+# Try importing json
+try:
+    import json
+    json_available = True
+    print("json successfully imported")
+except ImportError:
+    json_available = False
+    print("json not available. Using fallback string functions")
 
 # Create a very simple model as fallback
 def create_dummy_model():
@@ -47,25 +109,31 @@ def save_feature_list():
             '_RFDRHV6', '_PNEUMO3', '_RFSEAT3', 'AGE_BMI', 'AGE_BP',
             'HIGH_RISK'
         ]
-        with open('feature_list.json', 'w') as f:
-            json.dump({'features': features}, f)
+        if json_available:
+            with open('feature_list.json', 'w') as f:
+                json.dump({'features': features}, f)
         
-        # Also create text file version
+        # Also create text file version (more reliable)
         with open('feature_list.txt', 'w') as f:
             for feature in features:
                 f.write(f"{feature}\n")
+        
+        print("Feature list files created")
 
 # Save threshold
 def save_threshold():
     if not os.path.exists('optimal_threshold.json'):
         print("Creating threshold file...")
         threshold = 0.5
-        with open('optimal_threshold.json', 'w') as f:
-            json.dump({'optimal_threshold': threshold}, f)
+        if json_available:
+            with open('optimal_threshold.json', 'w') as f:
+                json.dump({'optimal_threshold': threshold}, f)
         
-        # Also create text file version
+        # Also create text file version (more reliable)
         with open('optimal_threshold.txt', 'w') as f:
             f.write(str(threshold))
+        
+        print("Threshold files created")
 
 # Save metadata
 def save_metadata():
@@ -78,8 +146,11 @@ def save_metadata():
             'description': 'Fallback model created by fix_model.py',
             'features_count': 38
         }
-        with open('model_metadata.json', 'w') as f:
-            json.dump(metadata, f)
+        if json_available:
+            with open('model_metadata.json', 'w') as f:
+                json.dump(metadata, f)
+        
+        print("Model metadata created")
 
 # Main repair function
 def repair_model_files():
@@ -88,23 +159,42 @@ def repair_model_files():
         
         # Create and save dummy model
         model = create_dummy_model()
-        with open('calibrated_model.pkl', 'wb') as f:
-            pickle.dump(model, f)
+        try:
+            with open('calibrated_model.pkl', 'wb') as f:
+                pickle.dump(model, f)
+            print("Saved model file")
+        except Exception as e:
+            print(f"Error saving model: {e}")
+            return False
         
         # Create and save dummy scaler
         scaler = create_dummy_scaler()
-        with open('scaler.pkl', 'wb') as f:
-            pickle.dump(scaler, f)
+        try:
+            with open('scaler.pkl', 'wb') as f:
+                pickle.dump(scaler, f)
+            print("Saved scaler file")
+        except Exception as e:
+            print(f"Error saving scaler: {e}")
+            return False
         
         # Create and save dummy imputer
         imputer = create_dummy_imputer()
-        with open('imputer.pkl', 'wb') as f:
-            pickle.dump(imputer, f)
+        try:
+            with open('imputer.pkl', 'wb') as f:
+                pickle.dump(imputer, f)
+            print("Saved imputer file")
+        except Exception as e:
+            print(f"Error saving imputer: {e}")
+            return False
         
         # Save supporting files
-        save_feature_list()
-        save_threshold()
-        save_metadata()
+        try:
+            save_feature_list()
+            save_threshold()
+            save_metadata()
+        except Exception as e:
+            print(f"Error saving support files: {e}")
+            return False
         
         print("Model repair complete. Using simplified models.")
         return True

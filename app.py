@@ -203,15 +203,34 @@ def load_model_components():
             model = joblib.load('calibrated_model.pkl')
             scaler = joblib.load('scaler.pkl')
             imputer = joblib.load('imputer.pkl')
+            st.success("Successfully loaded model files with joblib")
         except Exception as e:
             st.warning(f"Joblib load failed, trying with pickle: {str(e)}")
             # Fall back to regular pickle if joblib fails
-            with open('calibrated_model.pkl', 'rb') as f:
-                model = pickle.load(f)
-            with open('scaler.pkl', 'rb') as f:
-                scaler = pickle.load(f)
-            with open('imputer.pkl', 'rb') as f:
-                imputer = pickle.load(f)
+            try:
+                with open('calibrated_model.pkl', 'rb') as f:
+                    model = pickle.load(f)
+                with open('scaler.pkl', 'rb') as f:
+                    scaler = pickle.load(f)
+                with open('imputer.pkl', 'rb') as f:
+                    imputer = pickle.load(f)
+                st.success("Successfully loaded model files with pickle")
+            except Exception as e:
+                st.error(f"Failed to load model files with pickle: {str(e)}")
+                st.info("Running fix_model.py to generate new model files...")
+                # If both joblib and pickle fail, run fix_model
+                import fix_model
+                if fix_model.repair_model_files():
+                    st.success("Generated new model files")
+                    # Try loading again
+                    with open('calibrated_model.pkl', 'rb') as f:
+                        model = pickle.load(f)
+                    with open('scaler.pkl', 'rb') as f:
+                        scaler = pickle.load(f)
+                    with open('imputer.pkl', 'rb') as f:
+                        imputer = pickle.load(f)
+                else:
+                    raise Exception("Failed to generate model files")
         
         # Load features and threshold
         features = load_features()
@@ -226,7 +245,7 @@ def load_model_components():
         return model, scaler, imputer, features, threshold, is_dummy, metadata
     except Exception as e:
         st.error(f"Error loading model components: {str(e)}")
-        st.error("Please run the fix_model.py script to repair the pickle files.")
+        st.error("Try refreshing the page or running fix_model.py to repair the files")
         raise
 
 try:
@@ -891,4 +910,4 @@ try:
 
 except Exception as e:
     st.error(f"Error loading model components: {str(e)}")
-    st.error("Please run the fix_model.py script to repair the pickle files.")
+    st.error("Try refreshing the page or running fix_model.py to repair the files")
