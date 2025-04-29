@@ -1,4 +1,12 @@
 import streamlit as st
+
+# Set page configuration immediately as the first Streamlit command
+st.set_page_config(
+    page_title="Diabetes Risk Prediction",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
 import pandas as pd
 import numpy as np
 import pickle
@@ -24,13 +32,6 @@ except ImportError:
 
 # Filter warnings
 warnings.filterwarnings("ignore", category=UserWarning)
-
-# Set page configuration
-st.set_page_config(
-    page_title="Diabetes Risk Prediction",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
 
 # Custom CSS for better styling
 st.markdown("""
