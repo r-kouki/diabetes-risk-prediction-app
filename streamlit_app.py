@@ -47,7 +47,13 @@ if missing_packages:
     st.warning("Some required packages are missing. Installing them now...")
     for package in missing_packages:
         install_package(package)
-    st.warning("Please refresh the page for changes to take effect.")
+    st.success("All dependencies installed successfully!")
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.write("Please click the button below to launch the application")
+        if st.button("🚀 Launch Diabetes Risk Prediction App", type="primary", use_container_width=True):
+            import app
     st.stop()
 
 # Check for model files
@@ -70,7 +76,13 @@ if missing_files:
         import fix_model
         success = fix_model.repair_model_files()
         if success:
-            st.success("Model files have been fixed. Please refresh the page to use the app.")
+            st.success("Model files have been fixed.")
+            
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                st.write("Please click the button below to launch the application")
+                if st.button("🚀 Launch Diabetes Risk Prediction App", type="primary", use_container_width=True):
+                    import app
         else:
             st.error("Failed to fix model files. Please check the logs for more information.")
         st.stop()
@@ -78,9 +90,13 @@ if missing_files:
         st.error(f"Error running fix_model: {e}")
         st.stop()
 
-# If all checks pass, import and run the main app
-try:
-    import app
-except Exception as e:
-    st.error(f"Error importing the main application: {e}")
-    st.error("Please try refreshing the page or contact the administrator.") 
+# If all checks pass, show a welcome screen with a launch button
+st.title("✨ Diabetes Risk Prediction Tool")
+st.markdown("### Setup Complete")
+st.success("All dependencies and model files are available and ready to use.")
+
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    st.write("Please click the button below to launch the application")
+    if st.button("🚀 Launch Diabetes Risk Prediction App", type="primary", use_container_width=True):
+        import app 
