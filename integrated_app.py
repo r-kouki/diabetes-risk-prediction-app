@@ -5,8 +5,10 @@ import os
 import pickle
 import warnings
 import json
+import sys
+import subprocess
 
-# Try to import joblib
+# Quietly try to import joblib without auto-installing
 try:
     import joblib
     joblib_available = True
@@ -109,30 +111,32 @@ def load_model_files():
         if not os.path.exists('calibrated_model.pkl') or not os.path.exists('scaler.pkl') or not os.path.exists('imputer.pkl'):
             return None, None, None, None, None, None, "Required model files not found. Please ensure calibrated_model.pkl, scaler.pkl, and imputer.pkl exist."
         
-        # Try to load with joblib first, then fall back to pickle
-        try:
-            if joblib_available:
-                try:
-                    model = joblib.load('calibrated_model.pkl')
-                    scaler = joblib.load('scaler.pkl')
-                    imputer = joblib.load('imputer.pkl')
-                    st.success("Successfully loaded model files with joblib.")
-                except Exception as joblib_error:
-                    st.warning(f"Joblib loading failed: {str(joblib_error)}. Falling back to pickle.")
-                    raise  # Re-raise to trigger the pickle fallback
-            else:
-                st.info("Joblib not available. Using pickle to load models.")
-                raise ImportError("Joblib not available")  # Trigger the pickle fallback
-                
-        except Exception:
-            # Pickle fallback
-            with open('calibrated_model.pkl', 'rb') as f:
-                model = pickle.load(f)
-            with open('scaler.pkl', 'rb') as f:
-                scaler = pickle.load(f)
-            with open('imputer.pkl', 'rb') as f:
-                imputer = pickle.load(f)
-            st.success("Successfully loaded model files with pickle.")
+        # Try to load with joblib first (if available), then fall back to pickle
+        model = None
+        scaler = None
+        imputer = None
+        
+        # Only try joblib if it's available
+        if joblib_available:
+            try:
+                model = joblib.load('calibrated_model.pkl')
+                scaler = joblib.load('scaler.pkl')
+                imputer = joblib.load('imputer.pkl')
+            except Exception:
+                # Silently fall back to pickle
+                model = None  # Reset to trigger pickle loading
+        
+        # If joblib is not available or failed, use pickle
+        if model is None:
+            try:
+                with open('calibrated_model.pkl', 'rb') as f:
+                    model = pickle.load(f)
+                with open('scaler.pkl', 'rb') as f:
+                    scaler = pickle.load(f)
+                with open('imputer.pkl', 'rb') as f:
+                    imputer = pickle.load(f)
+            except Exception as e:
+                return None, None, None, None, None, None, f"Error loading model files with pickle: {str(e)}"
         
         # Try to load features
         try:
