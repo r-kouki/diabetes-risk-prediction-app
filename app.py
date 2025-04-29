@@ -1,11 +1,12 @@
 import streamlit as st
 
-# Set page configuration immediately as the first Streamlit command
-st.set_page_config(
-    page_title="Diabetes Risk Prediction",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
+# Only set page config if this script is run directly (not imported)
+if __name__ == "__main__":
+    st.set_page_config(
+        page_title="Diabetes Risk Prediction",
+        layout="wide",
+        initial_sidebar_state="collapsed",
+    )
 
 import pandas as pd
 import numpy as np

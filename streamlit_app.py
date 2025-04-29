@@ -53,7 +53,13 @@ if missing_packages:
     with col2:
         st.write("Please click the button below to launch the application")
         if st.button("🚀 Launch Diabetes Risk Prediction App", type="primary", use_container_width=True):
-            import app
+            # Import the app module without running the page config again
+            import sys
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("app", "app.py")
+            app_module = importlib.util.module_from_spec(spec)
+            sys.modules["app"] = app_module
+            spec.loader.exec_module(app_module)
     st.stop()
 
 # Check for model files
@@ -82,7 +88,13 @@ if missing_files:
             with col2:
                 st.write("Please click the button below to launch the application")
                 if st.button("🚀 Launch Diabetes Risk Prediction App", type="primary", use_container_width=True):
-                    import app
+                    # Import the app module without running the page config again
+                    import sys
+                    import importlib.util
+                    spec = importlib.util.spec_from_file_location("app", "app.py")
+                    app_module = importlib.util.module_from_spec(spec)
+                    sys.modules["app"] = app_module
+                    spec.loader.exec_module(app_module)
         else:
             st.error("Failed to fix model files. Please check the logs for more information.")
         st.stop()
@@ -99,4 +111,10 @@ col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     st.write("Please click the button below to launch the application")
     if st.button("🚀 Launch Diabetes Risk Prediction App", type="primary", use_container_width=True):
-        import app 
+        # Import the app module without running the page config again
+        import sys
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("app", "app.py")
+        app_module = importlib.util.module_from_spec(spec)
+        sys.modules["app"] = app_module
+        spec.loader.exec_module(app_module) 
