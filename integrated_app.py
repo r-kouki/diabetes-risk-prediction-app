@@ -18,6 +18,37 @@ st.set_page_config(
 st.title("✨ Diabetes Risk Prediction")
 st.markdown("##### A tool to assess your diabetes risk factors")
 
+# Show directory contents and path for debugging
+with st.expander("📁 View Directory Contents"):
+    # Get current working directory
+    cwd = os.getcwd()
+    st.write(f"**Current Working Directory:** `{cwd}`")
+    
+    # List files in the current directory
+    st.write("**Files in Current Directory:**")
+    files = os.listdir(cwd)
+    for file in sorted(files):
+        file_path = os.path.join(cwd, file)
+        if os.path.isdir(file_path):
+            st.write(f"📁 `{file}/`")
+        elif file.endswith('.pkl'):
+            st.write(f"🧪 `{file}` ({os.path.getsize(file_path)/1024:.1f} KB)")
+        else:
+            st.write(f"📄 `{file}`")
+    
+    # Check specifically for model files
+    st.write("**Model File Status:**")
+    model_files = ['calibrated_model.pkl', 'scaler.pkl', 'imputer.pkl', 
+                  'feature_list.json', 'feature_list.txt', 
+                  'optimal_threshold.json', 'optimal_threshold.txt']
+    
+    for model_file in model_files:
+        file_path = os.path.join(cwd, model_file)
+        if os.path.exists(file_path):
+            st.write(f"✅ `{model_file}` is present ({os.path.getsize(file_path)/1024:.1f} KB)")
+        else:
+            st.write(f"❌ `{model_file}` is missing")
+
 # Function to install packages
 def install_package(package_name):
     try:
