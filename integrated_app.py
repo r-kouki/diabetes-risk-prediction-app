@@ -8,22 +8,96 @@ import json
 import sys
 import subprocess
 
-# Quietly try to import joblib without auto-installing
-try:
-    import joblib
-    joblib_available = True
-except ImportError:
-    joblib_available = False
-
-# Suppress warnings
-warnings.filterwarnings('ignore')
-
-# Set page configuration
+# Display a title immediately to show the app is loading
 st.set_page_config(
     page_title="Diabetes Risk Prediction",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+st.title("✨ Diabetes Risk Prediction")
+st.markdown("##### A tool to assess your diabetes risk factors")
+
+# Function to install packages
+def install_package(package_name):
+    try:
+        st.info(f"Attempting to install {package_name}...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
+        st.success(f"Successfully installed {package_name}")
+        return True
+    except Exception as e:
+        st.error(f"Failed to install {package_name}: {str(e)}")
+        return False
+
+# Check and install required packages
+required_packages = {
+    "scikit-learn": "scikit-learn==1.3.0",
+    "joblib": "joblib==1.3.2"
+}
+
+# Install missing packages
+for package_name, package_spec in required_packages.items():
+    try:
+        # Try importing the package
+        if package_name == "scikit-learn":
+            import sklearn
+            st.success(f"✅ {package_name} is already installed")
+        elif package_name == "joblib":
+            import joblib
+            st.success(f"✅ {package_name} is already installed")
+    except ImportError:
+        # If import fails, try to install it
+        if not install_package(package_spec):
+            if package_name == "scikit-learn":
+                # If scikit-learn installation fails, show error and stop
+                st.error(f"⚠️ {package_name} is required but could not be installed.")
+                st.info("For Streamlit Cloud deployment, make sure scikit-learn is in your requirements.txt file.")
+                
+                # Create a requirements.txt file suggestion
+                st.markdown("""
+                ### Missing Required Packages
+                
+                Your app needs scikit-learn to load the model files. Here's a sample requirements.txt file to use:
+                
+                ```
+                streamlit==1.32.0
+                pandas==2.0.3
+                numpy==1.24.3
+                scikit-learn==1.3.0
+                matplotlib==3.7.2
+                scipy==1.10.1
+                xgboost==1.7.3
+                joblib==1.3.2
+                pickle5==0.0.12
+                ```
+                
+                1. Add this to a requirements.txt file in your repository
+                2. Redeploy your Streamlit app
+                """)
+                st.stop()
+
+# Verify scikit-learn is available
+sklearn_available = False
+try:
+    import sklearn
+    from sklearn.impute import SimpleImputer
+    from sklearn.preprocessing import StandardScaler
+    sklearn_available = True
+    st.success("✓ All required packages are installed and working!")
+except ImportError:
+    st.error("scikit-learn is not fully functioning. Please check your installation.")
+    st.stop()
+
+# Suppress warnings
+warnings.filterwarnings('ignore')
+
+# Quietly try to import joblib without auto-installing
+joblib_available = False
+try:
+    import joblib
+    joblib_available = True
+except ImportError:
+    pass  # Already tried to install above
 
 # Basic styling
 st.markdown("""
@@ -182,10 +256,6 @@ def load_model_files():
         return None, None, None, None, None, None, f"Unexpected error: {str(e)}"
 
 # -------------------- UI FUNCTIONS --------------------
-
-# Header
-st.title("✨ Diabetes Risk Prediction")
-st.markdown("##### A tool to assess your diabetes risk factors")
 
 # Load model components
 model, scaler, imputer, features, threshold, is_dummy, error_msg = load_model_files()
