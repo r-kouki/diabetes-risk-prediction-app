@@ -11,10 +11,18 @@ except ImportError:
     st.warning("Using pickle as fallback since joblib is not available")
 import json
 import warnings
-from sklearn.exceptions import InconsistentVersionWarning
+
+# Try to import sklearn, with graceful fallback
+try:
+    from sklearn.exceptions import InconsistentVersionWarning
+    warnings.filterwarnings("ignore", category=InconsistentVersionWarning)
+except ImportError:
+    st.error("scikit-learn is not installed. Some features may not work properly.")
+    # Define a dummy class to prevent errors
+    class InconsistentVersionWarning(Warning):
+        pass
 
 # Filter warnings
-warnings.filterwarnings("ignore", category=InconsistentVersionWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 # Set page configuration
