@@ -80,13 +80,43 @@ for package_name, package_spec in required_packages.items():
 sklearn_available = False
 try:
     import sklearn
-    from sklearn.impute import SimpleImputer
-    from sklearn.preprocessing import StandardScaler
+    # Check scikit-learn version
+    st.info(f"scikit-learn version: {sklearn.__version__}")
+    
+    # Try importing specific modules one by one with better error reporting
+    try:
+        from sklearn.impute import SimpleImputer
+        st.success("✓ SimpleImputer module imported successfully")
+    except ImportError as e:
+        st.error(f"Failed to import SimpleImputer: {str(e)}")
+        # Try to install scipy which is a common dependency
+        install_package("scipy>=1.3.2")
+        
+    try:
+        from sklearn.preprocessing import StandardScaler
+        st.success("✓ StandardScaler module imported successfully")
+    except ImportError as e:
+        st.error(f"Failed to import StandardScaler: {str(e)}")
+    
+    # Continue with the app even if some modules failed
     sklearn_available = True
-    st.success("✓ All required packages are installed and working!")
-except ImportError:
+    st.success("✓ Base scikit-learn is installed and working")
+except ImportError as e:
+    st.error(f"scikit-learn is not available: {str(e)}")
+    st.stop()
+
+# Try to ensure the model can be used even with partial scikit-learn functionality
+if not sklearn_available:
     st.error("scikit-learn is not fully functioning. Please check your installation.")
     st.stop()
+
+# Try to ensure numpy is properly installed as it's needed for prediction
+try:
+    import numpy as np
+    st.success("✓ NumPy is working correctly")
+except Exception as e:
+    st.error(f"NumPy error: {str(e)}")
+    install_package("numpy==1.24.3")
 
 # Suppress warnings
 warnings.filterwarnings('ignore')
@@ -196,8 +226,9 @@ def load_model_files():
                 model = joblib.load('calibrated_model.pkl')
                 scaler = joblib.load('scaler.pkl')
                 imputer = joblib.load('imputer.pkl')
-            except Exception:
-                # Silently fall back to pickle
+                st.success("✓ Successfully loaded model files with joblib")
+            except Exception as e:
+                st.warning(f"Joblib loading failed: {str(e)}")
                 model = None  # Reset to trigger pickle loading
         
         # If joblib is not available or failed, use pickle
@@ -209,8 +240,12 @@ def load_model_files():
                     scaler = pickle.load(f)
                 with open('imputer.pkl', 'rb') as f:
                     imputer = pickle.load(f)
+                st.success("✓ Successfully loaded model files with pickle")
             except Exception as e:
-                return None, None, None, None, None, None, f"Error loading model files with pickle: {str(e)}"
+                st.error(f"Error loading model files with pickle: {str(e)}")
+                # If we get here, both joblib and pickle failed
+                # Create a very basic fallback model for demonstration
+                return create_fallback_model()
         
         # Try to load features
         try:
@@ -254,6 +289,70 @@ def load_model_files():
         return model, scaler, imputer, features, threshold, is_dummy, None  # No error
     except Exception as e:
         return None, None, None, None, None, None, f"Unexpected error: {str(e)}"
+
+# Create a basic fallback model if loading fails
+def create_fallback_model():
+    """Create a basic model with simple risk logic if loading fails"""
+    st.warning("Creating a basic fallback model for demonstration purposes.")
+    
+    # Basic model class that implements predict_proba
+    class BasicModel:
+        def predict_proba(self, X):
+            # Basic risk calculation based on key features
+            n_samples = X.shape[0]
+            probas = np.zeros((n_samples, 2))
+            
+            for i in range(n_samples):
+                # Start with baseline risk
+                risk = 0.25
+                
+                # Try to use key risk factors if they exist in the input
+                try:
+                    # Age factor (usually at index 0)
+                    if X[i, 0] >= 6:  # Age 45+
+                        risk += 0.15
+                        
+                    # BMI factor (usually at index 1)
+                    if X[i, 1] >= 3:  # Overweight or obese
+                        risk += 0.15
+                    
+                    # General health (usually at index 2)
+                    if X[i, 2] >= 4:  # Fair or poor
+                        risk += 0.1
+                except:
+                    # If indices are wrong, just use the baseline
+                    pass
+                
+                # Clip to valid probability range
+                risk = max(0.05, min(0.95, risk))
+                probas[i, 0] = 1 - risk
+                probas[i, 1] = risk
+                
+            return probas
+    
+    # Basic transformer that does nothing
+    class IdentityTransformer:
+        def transform(self, X):
+            return X
+    
+    # Create the basic components
+    model = BasicModel()
+    scaler = IdentityTransformer()
+    imputer = IdentityTransformer()
+    
+    # Use a minimal set of features
+    features = [
+        '_AGE_G', '_BMI5CAT', 'GENHLTH', 'PHYSHLTH', 'MENTHLTH',
+        'EXERANY2', 'SMOKE100', 'WTKG3', 'INCOME3', 'BPHIGH6'
+    ]
+    
+    # Default threshold
+    threshold = 0.5
+    
+    # This is definitely a dummy model
+    is_dummy = True
+    
+    return model, scaler, imputer, features, threshold, is_dummy, None
 
 # -------------------- UI FUNCTIONS --------------------
 
