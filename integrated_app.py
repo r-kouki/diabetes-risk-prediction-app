@@ -7,6 +7,47 @@ import warnings
 import json
 import sys
 import subprocess
+from pathlib import Path
+import time
+import datetime
+import matplotlib.pyplot as plt
+import base64
+import io
+from io import BytesIO
+
+# Set OpenBLAS thread limitations to prevent memory errors
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+
+# Check if required libraries are available
+sklearn_available = False
+joblib_available = False
+
+try:
+    import sklearn
+    sklearn_available = True
+    st.success("✓ scikit-learn is available")
+except ImportError:
+    st.error("× scikit-learn is not available")
+
+try:
+    import joblib
+    joblib_available = True
+    st.success("✓ joblib is available")
+except ImportError:
+    st.warning("× joblib is not available - falling back to pickle")
+
+# Import specific scikit-learn modules before attempting to load models
+if sklearn_available:
+    try:
+        from sklearn.calibration import CalibratedClassifierCV
+        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.impute import SimpleImputer
+        st.success("✓ scikit-learn models imported successfully")
+    except ImportError as e:
+        st.error(f"× Error importing scikit-learn modules: {str(e)}")
+        sklearn_available = False
 
 # Display a title immediately to show the app is loading
 st.set_page_config(
@@ -51,116 +92,26 @@ for model_file in model_files:
 
 st.markdown("---")
 
-# Function to install packages
-def install_package(package_name):
-    try:
-        st.info(f"Attempting to install {package_name}...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
-        st.success(f"Successfully installed {package_name}")
-        return True
-    except Exception as e:
-        st.error(f"Failed to install {package_name}: {str(e)}")
-        return False
-
-# Check and install required packages
-required_packages = {
-    "scikit-learn": "scikit-learn==1.3.0",
-    "joblib": "joblib==1.3.2"
-}
-
-# Install missing packages
-for package_name, package_spec in required_packages.items():
-    try:
-        # Try importing the package
-        if package_name == "scikit-learn":
-            import sklearn
-            st.success(f"✅ {package_name} is already installed")
-        elif package_name == "joblib":
-            import joblib
-            st.success(f"✅ {package_name} is already installed")
-    except ImportError:
-        # If import fails, try to install it
-        if not install_package(package_spec):
-            if package_name == "scikit-learn":
-                # If scikit-learn installation fails, show error and stop
-                st.error(f"⚠️ {package_name} is required but could not be installed.")
-                st.info("For Streamlit Cloud deployment, make sure scikit-learn is in your requirements.txt file.")
-                
-                # Create a requirements.txt file suggestion
-                st.markdown("""
-                ### Missing Required Packages
-                
-                Your app needs scikit-learn to load the model files. Here's a sample requirements.txt file to use:
-                
-                ```
-                streamlit==1.32.0
-                pandas==2.0.3
-                numpy==1.24.3
-                scikit-learn==1.3.0
-                matplotlib==3.7.2
-                scipy==1.10.1
-                xgboost==1.7.3
-                joblib==1.3.2
-                pickle5==0.0.12
-                ```
-                
-                1. Add this to a requirements.txt file in your repository
-                2. Redeploy your Streamlit app
-                """)
-                st.stop()
-
-# Verify scikit-learn is available
+# Check for scikit-learn and joblib, but don't require them
 sklearn_available = False
 try:
     import sklearn
-    # Check scikit-learn version
-    st.info(f"scikit-learn version: {sklearn.__version__}")
-    
-    # Try importing specific modules one by one with better error reporting
-    try:
-        from sklearn.impute import SimpleImputer
-        st.success("✓ SimpleImputer module imported successfully")
-    except ImportError as e:
-        st.error(f"Failed to import SimpleImputer: {str(e)}")
-        # Try to install scipy which is a common dependency
-        install_package("scipy>=1.3.2")
-        
-    try:
-        from sklearn.preprocessing import StandardScaler
-        st.success("✓ StandardScaler module imported successfully")
-    except ImportError as e:
-        st.error(f"Failed to import StandardScaler: {str(e)}")
-    
-    # Continue with the app even if some modules failed
     sklearn_available = True
-    st.success("✓ Base scikit-learn is installed and working")
-except ImportError as e:
-    st.error(f"scikit-learn is not available: {str(e)}")
-    st.stop()
+    st.success("✅ scikit-learn is available")
+except ImportError:
+    st.warning("⚠️ scikit-learn is not available - will use basic model")
 
-# Try to ensure the model can be used even with partial scikit-learn functionality
-if not sklearn_available:
-    st.error("scikit-learn is not fully functioning. Please check your installation.")
-    st.stop()
-
-# Try to ensure numpy is properly installed as it's needed for prediction
-try:
-    import numpy as np
-    st.success("✓ NumPy is working correctly")
-except Exception as e:
-    st.error(f"NumPy error: {str(e)}")
-    install_package("numpy==1.24.3")
-
-# Suppress warnings
-warnings.filterwarnings('ignore')
-
-# Quietly try to import joblib without auto-installing
+# Check for joblib
 joblib_available = False
 try:
     import joblib
     joblib_available = True
+    st.success("✅ joblib is available")
 except ImportError:
-    pass  # Already tried to install above
+    st.warning("⚠️ joblib is not available - will use pickle if needed")
+
+# Suppress warnings
+warnings.filterwarnings('ignore')
 
 # Basic styling
 st.markdown("""
@@ -222,186 +173,177 @@ st.markdown("""
 
 # -------------------- MODEL FUNCTIONS --------------------
 
-# Function to check if model is a dummy
-def is_dummy_model(model):
-    """Check if model is a dummy or the real trained model"""
-    try:
-        # If it's a RandomForestClassifier with exactly 10 estimators, 
-        # it's likely our dummy model
-        if hasattr(model, 'estimators_') and len(model.estimators_) == 10:
-            return True
-        # For CalibratedClassifierCV models, check base estimator
-        if hasattr(model, 'base_estimator'):
-            if hasattr(model.base_estimator, 'estimators_') and len(model.base_estimator.estimators_) == 10:
-                return True
-        return False
-    except:
-        # If any error occurs during checking, assume it's not a dummy
-        return False
-
-# Load the model files
-@st.cache_resource
-def load_model_files():
-    """Load model files from disk"""
-    try:
-        # Check if the model files exist
-        if not os.path.exists('calibrated_model.pkl') or not os.path.exists('scaler.pkl') or not os.path.exists('imputer.pkl'):
-            return None, None, None, None, None, None, "Required model files not found. Please ensure calibrated_model.pkl, scaler.pkl, and imputer.pkl exist."
-        
-        # Try to load with joblib first (if available), then fall back to pickle
-        model = None
-        scaler = None
-        imputer = None
-        
-        # Only try joblib if it's available
-        if joblib_available:
-            try:
-                model = joblib.load('calibrated_model.pkl')
-                scaler = joblib.load('scaler.pkl')
-                imputer = joblib.load('imputer.pkl')
-                st.success("✓ Successfully loaded model files with joblib")
-            except Exception as e:
-                st.warning(f"Joblib loading failed: {str(e)}")
-                model = None  # Reset to trigger pickle loading
-        
-        # If joblib is not available or failed, use pickle
-        if model is None:
-            try:
-                with open('calibrated_model.pkl', 'rb') as f:
-                    model = pickle.load(f)
-                with open('scaler.pkl', 'rb') as f:
-                    scaler = pickle.load(f)
-                with open('imputer.pkl', 'rb') as f:
-                    imputer = pickle.load(f)
-                st.success("✓ Successfully loaded model files with pickle")
-            except Exception as e:
-                st.error(f"Error loading model files with pickle: {str(e)}")
-                # If we get here, both joblib and pickle failed
-                # Create a very basic fallback model for demonstration
-                return create_fallback_model()
-        
-        # Try to load features
-        try:
-            if os.path.exists('feature_list.json'):
-                with open('feature_list.json', 'r') as f:
-                    features = json.load(f)['features']
-            elif os.path.exists('feature_list.txt'):
-                with open('feature_list.txt', 'r') as f:
-                    features = [line.strip() for line in f.readlines()]
-            else:
-                return None, None, None, None, None, None, "Feature list file not found. Please ensure feature_list.json or feature_list.txt exists."
-        except Exception as e:
-            return None, None, None, None, None, None, f"Error loading feature list: {str(e)}"
-        
-        # Load threshold
-        try:
-            if os.path.exists('optimal_threshold.json'):
-                with open('optimal_threshold.json', 'r') as f:
-                    threshold = json.load(f)['optimal_threshold']
-            elif os.path.exists('optimal_threshold.txt'):
-                with open('optimal_threshold.txt', 'r') as f:
-                    threshold = float(f.read().strip())
-            else:
-                threshold = 0.5  # Default threshold if file not found
-        except Exception as e:
-            return None, None, None, None, None, None, f"Error loading threshold: {str(e)}"
-        
-        # Check if model is dummy
-        is_dummy = is_dummy_model(model)
-        
-        # Check for model metadata
-        if os.path.exists('model_metadata.json'):
-            try:
-                with open('model_metadata.json', 'r') as f:
-                    metadata = json.load(f)
-            except:
-                metadata = None
-        else:
-            metadata = None
-            
-        return model, scaler, imputer, features, threshold, is_dummy, None  # No error
-    except Exception as e:
-        return None, None, None, None, None, None, f"Unexpected error: {str(e)}"
-
-# Create a basic fallback model if loading fails
-def create_fallback_model():
-    """Create a basic model with simple risk logic if loading fails"""
-    st.warning("Creating a basic fallback model for demonstration purposes.")
+# Helper class if scikit-learn is not available
+class IdentityTransformer:
+    def transform(self, X):
+        return X
     
-    # Basic model class that implements predict_proba
+    def fit(self, X, y=None):
+        return self
+    
+    def fit_transform(self, X, y=None):
+        return self.transform(X)
+
+# Load model files with better error handling
+def load_model_files():
+    """
+    Load model files with proper error handling and fallback mechanisms
+    """
+    # Initialize to default values
+    model = None
+    scaler = None
+    imputer = None
+    feature_list = []
+    optimal_threshold = 0.5
+    
+    # Create a dictionary to track loading status
+    loading_status = {
+        "model": False,
+        "scaler": False,
+        "imputer": False,
+        "feature_list": False,
+        "threshold": False
+    }
+    
+    try:
+        # Try to load the feature list first
+        if os.path.exists('feature_list.json'):
+            with open('feature_list.json', 'r') as f:
+                feature_list = json.load(f)
+                loading_status["feature_list"] = True
+        
+        # Try to load the threshold
+        if os.path.exists('optimal_threshold.json'):
+            with open('optimal_threshold.json', 'r') as f:
+                optimal_threshold = json.load(f)
+                loading_status["threshold"] = True
+        
+        # Load model files if sklearn is available
+        if sklearn_available:
+            # Try loading with joblib first, then pickle
+            if joblib_available:
+                try:
+                    if os.path.exists('calibrated_model.pkl'):
+                        model = joblib.load('calibrated_model.pkl')
+                        loading_status["model"] = True
+                    
+                    if os.path.exists('scaler.pkl'):
+                        scaler = joblib.load('scaler.pkl')
+                        loading_status["scaler"] = True
+                    
+                    if os.path.exists('imputer.pkl'):
+                        imputer = joblib.load('imputer.pkl')
+                        loading_status["imputer"] = True
+                except Exception as e:
+                    st.warning(f"Error loading with joblib: {str(e)}. Trying pickle...")
+                    
+            # Try pickle if joblib failed or is not available
+            if not all([loading_status["model"], loading_status["scaler"], loading_status["imputer"]]):
+                try:
+                    if os.path.exists('calibrated_model.pkl') and not loading_status["model"]:
+                        with open('calibrated_model.pkl', 'rb') as f:
+                            model = pickle.load(f)
+                            loading_status["model"] = True
+                    
+                    if os.path.exists('scaler.pkl') and not loading_status["scaler"]:
+                        with open('scaler.pkl', 'rb') as f:
+                            scaler = pickle.load(f)
+                            loading_status["scaler"] = True
+                    
+                    if os.path.exists('imputer.pkl') and not loading_status["imputer"]:
+                        with open('imputer.pkl', 'rb') as f:
+                            imputer = pickle.load(f)
+                            loading_status["imputer"] = True
+                except Exception as e:
+                    st.error(f"Error loading with pickle: {str(e)}")
+        
+        # If any component failed to load, create a fallback
+        if not all(loading_status.values()):
+            missing_components = [k for k, v in loading_status.items() if not v]
+            st.warning(f"Failed to load model components: {', '.join(missing_components)}. Using fallback model.")
+            model_fallback, scaler_fallback, imputer_fallback = create_fallback_model()
+            
+            if not loading_status["model"]:
+                model = model_fallback
+            if not loading_status["scaler"]:
+                scaler = scaler_fallback
+            if not loading_status["imputer"]:
+                imputer = imputer_fallback
+            
+    except Exception as e:
+        st.error(f"Error loading model files: {str(e)}")
+        model, scaler, imputer = create_fallback_model()
+    
+    return model, scaler, imputer, feature_list, optimal_threshold
+    
+# Create a very basic fallback model
+def create_fallback_model():
+    """Create a very basic model for demonstration when scikit-learn is not available"""
+    
     class BasicModel:
         def predict_proba(self, X):
             # Basic risk calculation based on key features
-            n_samples = X.shape[0]
-            probas = np.zeros((n_samples, 2))
+            # This is a simplified model for demonstration purposes only
+            # It calculates risk based on a few key risk factors
             
-            for i in range(n_samples):
-                # Start with baseline risk
-                risk = 0.25
+            risk_scores = []
+            
+            for _, row in X.iterrows():
+                score = 0.0
                 
-                # Try to use key risk factors if they exist in the input
-                try:
-                    # Age factor (usually at index 0)
-                    if X[i, 0] >= 6:  # Age 45+
-                        risk += 0.15
-                        
-                    # BMI factor (usually at index 1)
-                    if X[i, 1] >= 3:  # Overweight or obese
-                        risk += 0.15
-                    
-                    # General health (usually at index 2)
-                    if X[i, 2] >= 4:  # Fair or poor
-                        risk += 0.1
-                except:
-                    # If indices are wrong, just use the baseline
-                    pass
+                # Age (higher risk with age)
+                if '_AGE_G' in row:
+                    age_factor = min(1.0, row['_AGE_G'] / 13.0)  # Up to age group 13
+                    score += 0.25 * age_factor
                 
-                # Clip to valid probability range
-                risk = max(0.05, min(0.95, risk))
-                probas[i, 0] = 1 - risk
-                probas[i, 1] = risk
+                # BMI (higher risk with higher BMI)
+                if '_BMI5CAT' in row:
+                    bmi_factor = min(1.0, row['_BMI5CAT'] / 4.0)  # Up to BMI category 4
+                    score += 0.3 * bmi_factor
                 
-            return probas
+                # General Health (higher score = worse health)
+                if 'GENHLTH' in row:
+                    health_factor = min(1.0, row['GENHLTH'] / 5.0)  # Up to category 5
+                    score += 0.2 * health_factor
+                
+                # High Blood Pressure
+                if 'BPHIGH6' in row and row['BPHIGH6'] == 2:  # Assuming 2 means "yes"
+                    score += 0.15
+                
+                # Exercise
+                if 'EXERANY2' in row and row['EXERANY2'] == 2:  # Assuming 2 means "no"
+                    score += 0.1
+                
+                risk_scores.append([1.0 - score, score])  # [not diabetic, diabetic]
+            
+            return np.array(risk_scores)
     
-    # Basic transformer that does nothing
-    class IdentityTransformer:
-        def transform(self, X):
-            return X
-    
-    # Create the basic components
     model = BasicModel()
     scaler = IdentityTransformer()
     imputer = IdentityTransformer()
     
-    # Use a minimal set of features
-    features = [
-        '_AGE_G', '_BMI5CAT', 'GENHLTH', 'PHYSHLTH', 'MENTHLTH',
-        'EXERANY2', 'SMOKE100', 'WTKG3', 'INCOME3', 'BPHIGH6'
-    ]
+    return model, scaler, imputer
     
-    # Default threshold
-    threshold = 0.5
-    
-    # This is definitely a dummy model
-    is_dummy = True
-    
-    return model, scaler, imputer, features, threshold, is_dummy, None
+# Check if a model is a dummy model
+def is_dummy_model(model):
+    """Detect if model is the BasicModel class or a real ML model"""
+    if sklearn_available:
+        # If it's a scikit-learn model
+        try:
+            return not isinstance(model, (sklearn.base.BaseEstimator, 
+                                         RandomForestClassifier,
+                                         CalibratedClassifierCV))
+        except:
+            # If we can't check with isinstance, check the class name
+            return model.__class__.__name__ == 'BasicModel'
+    else:
+        # If scikit-learn is not available, just check the class name
+        return model.__class__.__name__ == 'BasicModel'
 
 # -------------------- UI FUNCTIONS --------------------
 
 # Load model components
 model, scaler, imputer, features, threshold, is_dummy, error_msg = load_model_files()
-
-# Check if models loaded successfully
-if error_msg:
-    st.markdown(f"""
-    <div class="error-msg">
-    <h3>⚠️ Error Loading Models</h3>
-    <p>{error_msg}</p>
-    <p>Please ensure all required model files are available in the application directory.</p>
-    </div>
-    """, unsafe_allow_html=True)
-    st.stop()  # Stop execution if models couldn't be loaded
 
 # Show model info
 if is_dummy:
